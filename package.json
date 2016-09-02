@@ -1,0 +1,38 @@
+{
+  "name": "avrojs",
+  "version": "0.0.1",
+  "description": "Enriched AVRO schemas",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayflo/avrojs.git"
+  },
+  "keywords": [
+    "avro",
+    "validation"
+  ],
+  "author": "Jaret Flores",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jayflo/avrojs/issues"
+  },
+  "homepage": "https://github.com/jayflo/avrojs#readme",
+  "devDependencies": {
+    "eslint": "^3.2.2",
+    "eslint-config-google": "^0.6.0",
+    "tape": "~4.6.0",
+    "tape-watch": "~2.2.3"
+  },
+  "eslintConfig": {
+    "extends": "google"
+  },
+  "dependencies": {
+    "avro-map": "^0.0.1",
+    "debug": "~2.2.0",
+    "lodash": "^4.14.1"
+  }
+}
