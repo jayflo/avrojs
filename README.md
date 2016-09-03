@@ -4,12 +4,14 @@
 
 <!---
 
+1. [How it works](#howItWorks)
+
 AvroJS enriches standard AVRO JSON schemas by allowing you to:
 
-  1. define validation attributes
-  2. define validated types
+  1. define custom "validation" types
+  2. name previously un-nameable types
 
-# How it works
+# How it works<a name="howItWorks"></a>
 
 Suppose you have an `array` type in an AVRO schema that you want to ensure has at least two items.  With AvroJS you can do the following:
 
@@ -51,7 +53,7 @@ var schema =
   $$uber: ['A', 'B']
 }, {
   type: 'array',
-  items: '$$uberString',
+  items: '$$uberStringAB',
   $lenGte: 2
 }]
 ```
@@ -65,7 +67,7 @@ var uberArg2 = 'B';
 var schema =
 [{
   type: 'array',
-  items: '$$uberString',
+  items: 'string',
   $lenGte: 2,
   $$uberArray: function(arr) {
     return arr.every(function(str) {
@@ -83,7 +85,7 @@ var uberArg1 = 'A';
 var uberArg2 = 'B';
 var schema =
 [{
-  name: '$$uberArray2'
+  name: '$$reusableUberArray',
   type: 'array',
   items: 'string',
   $lenGte: 2,
@@ -92,12 +94,18 @@ var schema =
       return uberComplexity(uberArg1, uberArg2, somethingElse, str);
     });
   }
+}, {
+  name: 'uberRecord',
+  type: 'record',
+  fields: [{
+    name: 'uberField', type: '$$reusableUberArray'
+  }]
 }]
 ```
 
 AvroJS also provides an export method that removes all `$` custom attributes/types to provide a valid AVRO JSON schema.
 
-# Built-in (JSON friendly) Validations
+# Built-in (JSON friendly) Validations<a name="builtInValidations"></a>
 
 The validators listed below are used as, e.g.:
 
@@ -127,11 +135,11 @@ The validators listed below are used as, e.g.:
 | `$keyRe` | `RegExp` | `Object` | `Object.keys(input).every(function(item) { return arg.test(item)) })` |
 | `$keyReStr` | `[String, String]` | `Object` | `Object.keys(input).every(function(item) { return new RegExp(arg1, arg2).test(item)) })` |
 
-### !Provide a mechanism to include pseudo-built-in validators.
+Built-in validators live in the "null" namespace, i.e. `''`.  Other than AVRO specific validation checks, there is nothing special about built-in validators and their definitions *will be overridden* but custom validators of the same name in the null namespace.  We suggest that you prefix all your validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.
 
-# Custom validators
+# Validators<a name="validators"></a>
 
-Custom validators can be added into the schema as follows:
+Validators can be though of as "Function" types and are defined in the schema as follows:
 
 ```js
 [{
@@ -146,31 +154,78 @@ Custom validators can be added into the schema as follows:
 
 Supported attributes:
 
-1. `name`: `String`, **required**.  The string used (later as a key) to refer to the validator.  **Must start with a `$` and it is recommended you start with `$$` to differentiate from built-in validators.**
+1. `name`: `String`, **required**.  The string to be used as a key on a type definition to apply the validator.  **Must start with a `$` and it is recommended you start with `$$` to differentiate from built-in validators.**
 2. `namespace`: `String`.  Use if you want to restrict the definition to a namespace.
-3. `priority`: `Integer`, default `1`.  Used to determine validation order.   Custom validators my not have priority 0.  Negative priorities are valid.  See *Priority* section below.
-4. `type`: `Function`, **required**.  The validation function.  The arguments provided to the property `name` when applied to a schema entry are given as the initial positional parameters, and the value being tested as the last.
+3. `priority`: `Integer`, default `1`.  Used to determine validation order.   Non built-in validators cannot have priority 0.  Negative priorities are valid.  See *Priority* section below.
+4. `type`: `Function`, **required**.  The validation function.  When `name` is added to a type definition, it's value will be the initial positional arguments provided to the function, and the value being validated the last.  E.g.
 
-### `name`/`namespace`
+  ```js
+  [{
+    name: '$$inOpenInterval',
+    type: function(a, b, value) {
+      return value > a && value < b;
+    }
+  }, {
+    name: '$$float01',
+    type: 'float',
+    $$inOpenInterval: [0, 1]
+  }]
+  ```
 
-`name` + `namespace` follow the (AVRO specification)[https://avro.apache.org/docs/current/spec.html#names] the same as any other named types, e.g. `record`, `fixed`.  If you define a `name` as a fullname, e.g. `A.B.$$validator`, or you provide a `name: $$validator` with `namespace: A.B`, and you wish to use the validator outside the namespace `A.B`, you must refer to it via the fullname, e.g.
+  During validation on a `$$float01`, the `$$inOpenInterval` validation function will have arguments `a=0`, `b=1` and `value` the float being validated (should it exist).
+
+
+# Validated types<a name="validatedTypes"></a>
+
+These are native AVRO types decorated with custom (validator) attributes that can be referenced by name; just like standard "nameable" types.  In AVRO, the only nameable types are `record`, `enum` and `fixed`.  Typically there may not be much need for naming other types, but now you can bundle a type with it's validation and reuse it.
+
+```js
+[{
+  name: '$$myValidatedInt',
+  namespace: 'A.B',
+  type: 'int',
+  $lt: 10,
+  $gte: 0
+}]
+```
+
+You can then use the name `A.B.$$myValidatedInt` as you would a usual nameable type.  Although the `$$` prefix in the `name` is not required, it is highly recommended so that AVRO, AvroJS, and your own custom definitons are clearly distinguishable.
+
+---
+
+# `name` and `namespace`<a name="nameAndNamespace"></a>
+
+`name` + `namespace` follow all the usual (AVRO specification)[https://avro.apache.org/docs/current/spec.html#names] rules, and this includes validators' keys.  For example, both validators
+
+```js
+[{
+  name: 'A.B.$$validator1',
+  type: function(value) { /* ... */ }
+}, {
+  name: '$$validator2',
+  namespace: 'A.B',
+  type: function(value) { /* ... */ }
+}]
+```
+
+must be used as follows *when outside the namespace* `A.B`:
 
 ```js
 {
-  type: 'record',
-  'A.B.$$validator': ['arg1', 'arg2']
+  type: 'string',
+  'A.B.$$validator1': ['arg1', 'arg2']
 }
 ```
 
-### Priority and Priority Overrides
+# Priority and Built-in validator priority overrides<a name="priority"></a>
 
-Priority can be used to orchestrate the order that validations are applied.  In the absence of custom validations, application order is as follows:
+Priority can be used to orchestrate the order that validations are applied which can effect when validation algorithms exit, e.g. stop validation of object on first failed validation ("fail fast"). In the absence of any overrides, validation order is as follows:
 
-| Priority | Description |
-| --- | --- |
-| -1 | type/nullability checking (customisable) |
-| 0 | child validations for `record`, `map`, `array` and `union` types |
-| 1 | built-in validators |
+| name | Priority | Description |
+| --- | --- | --- |
+| `$type` | -1 | type/nullability checking |
+| N/A | 0 | child validations for `record`, `map`, `array` and `union` types |
+| see above | 1 | built-in validators default |
 
 You can override the priority of any validator "inline" by appending `:X`, where `X` is the new priority, to a validator's key.  For example:
 
@@ -185,8 +240,6 @@ You can override the priority of any validator "inline" by appending `:X`, where
 
 will validate that `map`'s keys are integers via regular expression before it checks the key count is less than 3.  "Inline" priorities override the `priority` property defined in custom validators.  The priority of type checking can be changed via the `$type` key.  `$type` exists only to change the priority of type checking on the specified schema entry; its value is ignored.
 
-# Custom types
-
-These are native AVRO types decorated with custom (validator) attributes.
+# API Documentation<a name="apiDocs"></a>
 
 -->
