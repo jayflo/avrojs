@@ -2,6 +2,8 @@
 
 # Under Construction
 
+<!---
+
 AvroJS enriches standard AVRO JSON schemas by allowing you to:
 
   1. define validation attributes
@@ -124,7 +126,6 @@ The validators listed below are used as, e.g.:
 | `$reStr` | `[String, String]` | `String` | `new RegExp(arg1, arg2).text(input)` |  
 | `$keyRe` | `RegExp` | `Object` | `Object.keys(input).every(function(item) { return arg.test(item)) })` |
 | `$keyReStr` | `[String, String]` | `Object` | `Object.keys(input).every(function(item) { return new RegExp(arg1, arg2).test(item)) })` |
-| `$type` | N/A | N/A | set the priority of type checking (see *Priority* section below) |
 
 ### !Provide a mechanism to include pseudo-built-in validators.
 
@@ -187,3 +188,5 @@ will validate that `map`'s keys are integers via regular expression before it ch
 # Custom types
 
 These are native AVRO types decorated with custom (validator) attributes.
+
+-->
