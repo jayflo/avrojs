@@ -172,7 +172,9 @@ The validators listed below are used as follows:
 | `$keyRe` | `RegExp` | `Object` | `Object.keys(input).every(function(item) { return arg.test(item)) })` |
 | `$keyReStr` | `[String, String]` | `Object` | `Object.keys(input).every(function(item) { return new RegExp(arg1, arg2).test(item)) })` |
 
-Built-in validators live in the "null" namespace, i.e. `''`.  Other than AVRO specific validation checks, there is nothing special about built-in validators and their definitions *will be overridden* but custom validators of the same name in the null namespace.  We suggest that you prefix all your validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.
+Built-in validators are injected into every namespace similar to AVRO primitives.  HOWEVER, you **can** override their definition for specific namespaces simply by creating a validator with the same name.  For example, when `$lt` is used within namespace `org.X`, we first look for a definition of `$lt` whose `namespace = 'org.X'` before falling back to the built-in definition.
+
+**We suggest that you prefix all your validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.**
 
 There are other built-in validations whose definitions first require an understanding of *Priority*.  Please see the Priority section below.
 
