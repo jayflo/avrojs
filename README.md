@@ -105,9 +105,46 @@ var schema =
 
 AvroJS also provides an export method that removes all `$` custom attributes/types to provide a valid AVRO JSON schema.
 
-# Built-in (JSON friendly) Validations<a name="builtInValidations"></a>
+# Validators<a name="validators"></a>
 
-The validators listed below are used as, e.g.:
+Validators can be though of as "Function" types and are defined in the schema as follows:
+
+```js
+[{
+  name: '$$validatorName',
+  namespace: 'A.B',
+  priority: 1,
+  type: function(args..., value) {
+    return trueOrFalse(args..., value);
+  }
+}]
+```
+
+Supported attributes:
+
+1. `name`: `String`, **required**.  The string to be used as a key on a type definition to apply the validator.  **Must start with a `$` and it is recommended you start with `$$` to differentiate from built-in validators.**
+2. `namespace`: `String`.  Use if you want to restrict the definition to a namespace.
+3. `priority`: `Integer`, default `2`.  Used to determine validation order.   Non built-in validators cannot have priority 0.  Negative priorities are valid.  See *Priority* section below.
+4. `type`: `Function`, **required**.  The validation function.  When `name` is added to a type definition, it's value will be the initial positional arguments provided to the function, and the value being validated the last.  E.g.
+
+  ```js
+  [{
+    name: '$$inOpenInterval',
+    type: function(a, b, value) {
+      return value > a && value < b;
+    }
+  }, {
+    name: '$$float01',
+    type: 'float',
+    $$inOpenInterval: [0, 1]
+  }]
+  ```
+
+  During validation on a `$$float01`, the `$$inOpenInterval` validation function will have arguments `a=0`, `b=1` and `value` the float being validated (should it exist).
+
+# Built-in (JSON friendly) Validations: Simple List<a name="builtInValidations"></a>
+
+The validators listed below are used as follows:
 
 ```js
 {
@@ -137,43 +174,7 @@ The validators listed below are used as, e.g.:
 
 Built-in validators live in the "null" namespace, i.e. `''`.  Other than AVRO specific validation checks, there is nothing special about built-in validators and their definitions *will be overridden* but custom validators of the same name in the null namespace.  We suggest that you prefix all your validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.
 
-# Validators<a name="validators"></a>
-
-Validators can be though of as "Function" types and are defined in the schema as follows:
-
-```js
-[{
-  name: '$$validatorName',
-  namespace: 'A.B',
-  priority: 1,
-  type: function(args..., value) {
-    return trueOrFalse(args..., value);
-  }
-}]
-```
-
-Supported attributes:
-
-1. `name`: `String`, **required**.  The string to be used as a key on a type definition to apply the validator.  **Must start with a `$` and it is recommended you start with `$$` to differentiate from built-in validators.**
-2. `namespace`: `String`.  Use if you want to restrict the definition to a namespace.
-3. `priority`: `Integer`, default `1`.  Used to determine validation order.   Non built-in validators cannot have priority 0.  Negative priorities are valid.  See *Priority* section below.
-4. `type`: `Function`, **required**.  The validation function.  When `name` is added to a type definition, it's value will be the initial positional arguments provided to the function, and the value being validated the last.  E.g.
-
-  ```js
-  [{
-    name: '$$inOpenInterval',
-    type: function(a, b, value) {
-      return value > a && value < b;
-    }
-  }, {
-    name: '$$float01',
-    type: 'float',
-    $$inOpenInterval: [0, 1]
-  }]
-  ```
-
-  During validation on a `$$float01`, the `$$inOpenInterval` validation function will have arguments `a=0`, `b=1` and `value` the float being validated (should it exist).
-
+There are other built-in validations whose definitions first require an understanding of *Priority*.  Please see the Priority section below.
 
 # Validated types<a name="validatedTypes"></a>
 
@@ -217,17 +218,20 @@ must be used as follows *when outside the namespace* `A.B`:
 }
 ```
 
-# Priority and Built-in validator priority overrides<a name="priority"></a>
+# Priority and Built-in priority overrides<a name="priority"></a>
 
 Priority can be used to orchestrate the order that validations are applied which can effect when validation algorithms exit, e.g. stop validation of object on first failed validation ("fail fast"). In the absence of any overrides, validation order is as follows:
 
-| name | Priority | Description |
-| --- | --- | --- |
-| `$type` | -1 | type/nullability checking |
-| N/A | 0 | child validations for `record`, `map`, `array` and `union` types |
-| see above | 1 | built-in validators default |
+| name(s) | Priority | Priority overridable | Description |
+| --- | --- | --- | --- |
+| `$in` | ``-Infinity` | No | pre-validation transform |
+| `$avro` | `-1` | Yes | native AVRO validation |
+| N/A | `0` | No | child validations for `record`, `map`, `array` and `union` types |
+| see above | `1` | Yes | built-in validators default |
+| see above | `2` | Yes | custom validators default |
+| `$out` | `Infinity` | No | post-validation transform  |
 
-You can override the priority of any validator "inline" by appending `:X`, where `X` is the new priority, to a validator's key.  For example:
+You can override the priority of a validator with overridable priority "inline" by appending `:X`, where `X` is the new priority, to the validator's key.  For example:
 
 ```js
 {
@@ -238,7 +242,48 @@ You can override the priority of any validator "inline" by appending `:X`, where
 }
 ```
 
-will validate that `map`'s keys are integers via regular expression before it checks the key count is less than 3.  "Inline" priorities override the `priority` property defined in custom validators.  The priority of type checking can be changed via the `$type` key.  `$type` exists only to change the priority of type checking on the specified schema entry; its value is ignored.
+will validate that `map`'s keys are integers via regular expression before it checks the key count is less than 3.  Of course, "inline" priorities take precedence over the `priority` value in the validator's definition.  **You cannot override a priority to `0`**.
+
+# Special keys
+
+These are keys that can be added to schema entries whose value and/or priority cannot be overriden.
+
+1. `$avro`: exists only to allow changing of the priority of AVRO validations; any value is ignored.  Suppose you want to perform some validation(s) after the AVRO validation, but before children are validated:
+
+  ```js
+  {
+    type: 'record',
+    '$avro:-2': 'n/a',
+    $custom: function(value) { /* do something here before recursion */ },
+    fields: [/*...*/]
+  }
+  ```
+
+2. `$in`: (**MUTATES**) define a function whose return value will mutate the object being validated *before* any validations occur.
+
+  ```js
+  {
+    name: '$$escapeHtml',
+    type: 'string',
+    $in: function(value) { return escapeHtml(value); }
+  }
+  ```
+
+  Since `$in` has priority `-Infinity`, the value of the string within the object being validated will be escaped before **any** validations occur.
+
+3. `$out`: (**MUTATES**) define a function whose return value will mutate the object being validated *after* all validations occur.
+
+```js
+{
+  name: '$$escapeHtml',
+  type: 'string',
+  $out: function(value) { return escapeHtml(value); }
+}
+```
+
+In this case, all validations will be performed on the raw (unescaped) HTML, but the escaped HTML will be present in the object after the validation method has finished.
+
+It is highly recommended that you avoid the use of `$in` and `$out` if at all possible.  They exist for special cases where the results of such mutations will be minimal, e.g. for use on primitives.  For example, transforming the string representation of an `enum` value for display on UI.
 
 # API Documentation<a name="apiDocs"></a>
 
