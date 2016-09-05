@@ -107,7 +107,7 @@ AvroJS also provides an export method that removes all `$` custom attributes/typ
 
 # Validators<a name="validators"></a>
 
-Validators can be though of as "Function" types and are defined in the schema as follows:
+Validators can be thought of as "Function" types and are defined in the schema as follows:
 
 ```js
 [{
@@ -140,7 +140,18 @@ Supported attributes:
   }]
   ```
 
-  During validation on a `$$float01`, the `$$inOpenInterval` validation function will have arguments `a=0`, `b=1` and `value` the float being validated (should it exist).
+  During validation on a `$$float01`, the `$$inOpenInterval` validation function will have arguments `a=0`, `b=1` and `value` the float being validated (should it exist).  Array brackets around validator arguments are not necessary when only *one* argument is to be passed and that argument is *not* an array.  For example, `$$validation: [[0, 1]]` would pass the array `[0, 1]` as the *first* argument to `$$validation`'s validator function.  To pass no arguments, you must use `$$validation: []`.
+
+Validations can also be defined "inline" when they only need to be used once:
+
+```js
+[{
+  type: 'array',
+  items: 'string',
+  $usedOnce: function(value) { /* ... */ }
+}]
+
+Validations defined inline receive only one argument which is the value to be validated.
 
 # Built-in (JSON friendly) Validations: Simple List<a name="builtInValidations"></a>
 
