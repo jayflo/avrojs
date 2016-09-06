@@ -45,7 +45,8 @@ var schema =
 [{
   name: '$$uber',
   type: function(uberArg1, uberArg2, str) {
-    return uberComplexity(uberArg1, uberArg2, somethingElse, str);
+    if (!uberComplexity(uberArg1, uberArg2, somethingElse, str))
+      return 'String is not uber';
   }
 }, {
   name: '$$uberStringAB',
@@ -70,9 +71,12 @@ var schema =
   items: 'string',
   $lenGte: 2,
   $$uberArray: function(arr) {
-    return arr.every(function(str) {
+    var allUber = arr.every(function(str) {
       return uberComplexity(uberArg1, uberArg2, somethingElse, str);
     });
+
+    if (!allUber)
+      return 'Not all strings in array are uber!';
   }
 }]
 ```
@@ -90,9 +94,12 @@ var schema =
   items: 'string',
   $lenGte: 2,
   $$uberArray: function(arr) {
-    return arr.every(function(str) {
+    var allUber = arr.every(function(str) {
       return uberComplexity(uberArg1, uberArg2, somethingElse, str);
     });
+
+    if (!allUber)
+      return 'Not all strings in array are uber!';
   }
 }, {
   name: 'uberRecord',
@@ -115,7 +122,10 @@ Validators can be thought of as "Function" types and are defined in the schema a
   namespace: 'A.B',
   priority: 1,
   type: function(args..., value) {
-    return trueOrFalse(args..., value);
+    if (isNotValid(value))
+      return 'The error message';
+    else
+      return anythingFalsy();
   }
 }]
 ```
@@ -125,13 +135,14 @@ Supported attributes:
 1. `name`: `String`, **required**.  The string to be used as a key on a type definition to apply the validator.  **Must start with a `$` and it is recommended you start with `$$` to differentiate from built-in validators.**
 2. `namespace`: `String`.  Use if you want to restrict the definition to a namespace.
 3. `priority`: `Integer`, default `2`.  Used to determine validation order.   Non built-in validators cannot have priority 0.  Negative priorities are valid.  See *Priority* section below.
-4. `type`: `Function`, **required**.  The validation function.  When `name` is added to a type definition, it's value will be the initial positional arguments provided to the function, and the value being validated the last.  E.g.
+4. `type`: `Function`, **required**.  The validation function that returns the error message when the value being validates is *invalid*, and falsy otherwise.  When `name` is added to a type definition, it's value will be the initial positional arguments provided to the function, and the value being validated the last.  E.g.
 
   ```js
   [{
     name: '$$inOpenInterval',
     type: function(a, b, value) {
-      return value > a && value < b;
+      if (!(value > a && value < b))
+        return format('Value is not between %s and %s', a, b);
     }
   }, {
     name: '$$float01',
@@ -183,11 +194,11 @@ The validators listed below are used as follows:
 | `$keyRe` | `RegExp` | `Object` | `Object.keys(input).every(function(item) { return arg.test(item)) })` |
 | `$keyReStr` | `[String, String]` | `Object` | `Object.keys(input).every(function(item) { return new RegExp(arg1, arg2).test(item)) })` |
 
-Built-in validators are injected into every namespace similar to AVRO primitives.  HOWEVER, you **can** override their definition for specific namespaces simply by creating a validator with the same name.  For example, when `$lt` is used within namespace `org.X`, we first look for a definition of `$lt` whose `namespace = 'org.X'` before falling back to the built-in definition.
+Built-in validators are injected into every namespace similar to AVRO primitives.  HOWEVER, you **can** override the above validators' definition for specific namespaces simply by creating a validator with the same name.  For example, when `$lt` is used within namespace `org.X`, we first look for a definition of `$lt` whose `namespace = 'org.X'` before falling back to the built-in definition.
 
-**We suggest that you prefix all your validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.**
+**It is highly suggested that you prefix all custom validator names with `$$` to differentiate AvroJS definitions (which use a single `$`) from your own.**
 
-There are other built-in validations whose definitions first require an understanding of *Priority*.  Please see the Priority section below.
+There are other built-in validations whose understanding first requires a discussion of *Priority*.  Please see the Priority section below.
 
 # Validated types<a name="validatedTypes"></a>
 
@@ -233,18 +244,20 @@ must be used as follows *when outside the namespace* `A.B`:
 
 # Priority and Built-in priority overrides<a name="priority"></a>
 
-Priority can be used to orchestrate the order that validations are applied which can effect when validation algorithms exit, e.g. stop validation of object on first failed validation ("fail fast"). In the absence of any overrides, validation order is as follows:
+Priority can be used to orchestrate the order that validations are applied and this can effect the behavior of a validation algorithms, e.g. validation stops on first failed validation. In the absence of any overrides, validation order is as follows:
 
 | name(s) | Priority | Priority overridable | Description |
 | --- | --- | --- | --- |
 | `$in` | ``-Infinity` | No | pre-validation transform |
 | `$avro` | `-1` | Yes | native AVRO validation |
-| N/A | `0` | No | child validations for `record`, `map`, `array` and `union` types |
+| `$children` | `0` | No | child validations for `record`, `map`, `array` and `union` types |
 | see above | `1` | Yes | built-in validators default |
 | see above | `2` | Yes | custom validators default |
 | `$out` | `Infinity` | No | post-validation transform  |
 
-You can override the priority of a validator with overridable priority "inline" by appending `:X`, where `X` is the new priority, to the validator's key.  For example:
+As with the built-in validators listed earlier, the validators in this table are injected into every namespace, however **you cannot create any custom validators with the names `$in`, `$avro`, `$children` or `$out` in any namespace (for now) to shadow override them**.  
+
+Most of the time (exceptions in table above) you can override the priority of a validator "inline" by appending `:X`, where `X` is the new priority, to the validator's key.  For example:
 
 ```js
 {
@@ -259,9 +272,10 @@ will validate that `map`'s keys are integers via regular expression before it ch
 
 # Special keys
 
-These are keys that can be added to schema entries whose value and/or priority cannot be overriden.
+These are keys that can be added to schema entries whose value and/or priority cannot be overriden.  Their names are reserved and attempting to defined a validator whose `name` is one of the following (in any namespace) will cause an error to be thrown.
 
-1. `$avro`: exists only to allow changing of the priority of AVRO validations; any value is ignored.  Suppose you want to perform some validation(s) after the AVRO validation, but before children are validated:
+1. `$children`: that validation which recurses into the object being validated for recursable types, e.g. `record`.  It is simply a placeholder and unique validator with priority 0; you cannot modify anything about it.
+2. `$avro`: exists only to allow changing of the priority of AVRO validations; any value is ignored.  Suppose you want to perform some validation(s) after the AVRO validation, but before children are validated:
 
   ```js
   {
@@ -272,7 +286,7 @@ These are keys that can be added to schema entries whose value and/or priority c
   }
   ```
 
-2. `$in`: (**MUTATES**) define a function whose return value will mutate the object being validated *before* any validations occur.
+3. `$in`: (**MUTATES**) define a function whose return value will mutate the object being validated *before* any validations occur.  **The returned value will replace the original value in the object being parsed**.
 
   ```js
   {
@@ -284,7 +298,7 @@ These are keys that can be added to schema entries whose value and/or priority c
 
   Since `$in` has priority `-Infinity`, the value of the string within the object being validated will be escaped before **any** validations occur.
 
-3. `$out`: (**MUTATES**) define a function whose return value will mutate the object being validated *after* all validations occur.
+4. `$out`: (**MUTATES**) define a function whose return value will mutate the object being validated *after* all validations occur.  **The return value will replace the original value in the object being parsed**.  If you use `$in` and `$out` on the same entry, `$out` will receive the returned value of `$in`.
 
 ```js
 {
